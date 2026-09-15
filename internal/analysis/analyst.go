@@ -5,6 +5,7 @@ package analysis
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/QYVORA/qyvora-imhotep/internal/cloud"
@@ -69,12 +70,10 @@ func Stages(reg *rules.Registry, cfg map[string]any, maxAssets int) []pipeline.S
 		{
 			ID: "discovery", Name: "Asset discovery",
 			Run: func(ctx context.Context, step *pipeline.Step) error {
-				snap, err := currentSnapshot(step)
-				if err != nil {
+				if _, err := snapshotFrom(step); err != nil {
 					return err
 				}
-				var disc discovery.Discovery
-				assets := disc.Run(snap)
+				assets := assetsFrom(step)
 				emitted := 0
 				for _, a := range assets {
 					if emitted >= maxAssets {
@@ -97,11 +96,10 @@ func Stages(reg *rules.Registry, cfg map[string]any, maxAssets int) []pipeline.S
 		{
 			ID: "inventory", Name: "Configuration inventory",
 			Run: func(ctx context.Context, step *pipeline.Step) error {
-				snap, err := currentSnapshot(step)
-				if err != nil {
+				if _, err := snapshotFrom(step); err != nil {
 					return err
 				}
-				ov := misconfig.Build(snap)
+				ov := overviewFrom(step)
 				if step.Events != nil {
 					step.Events.Info(events.StorageAnalyzed, map[string]any{
 						"exposed": ov.ExposedStorage, "unencrypted": ov.UnencryptedStorage,
@@ -123,21 +121,20 @@ func Stages(reg *rules.Registry, cfg map[string]any, maxAssets int) []pipeline.S
 				if reg == nil {
 					return nil
 				}
-				snap, err := currentSnapshot(step)
+				snap, err := snapshotFrom(step)
 				if err != nil {
 					return err
 				}
-				var disc discovery.Discovery
 				env := &Env{
 					Snapshot: snap,
-					Overview: misconfig.Build(snap),
-					Assets:   disc.Run(snap),
+					Overview: overviewFrom(step),
+					Assets:   assetsFrom(step),
 					Events:   step.Events,
 					Store:    step.Evidence,
 					Config:   cfg,
 				}
 				sink := rules.NewSink()
-				if err := reg.Run(ctx, env, sink); err != nil {
+				if err := reg.RunProfile(ctx, env, sink, profileOf(cfg)); err != nil {
 					return err
 				}
 				for _, f := range sink.List() {
@@ -163,6 +160,9 @@ func Stages(reg *rules.Registry, cfg map[string]any, maxAssets int) []pipeline.S
 				step.Result.Score = score
 				step.Result.Level = level
 				step.Result.Evidence = step.Evidence.List()
+				sort.Slice(step.Result.Evidence, func(i, j int) bool {
+					return step.Result.Evidence[i].Hash < step.Result.Evidence[j].Hash
+				})
 				if step.Events != nil {
 					step.Events.Info(events.RiskCalculated, map[string]any{
 						"score": score, "level": level, "findings": len(step.Result.Findings),
@@ -249,15 +249,72 @@ func currentSnapshot(step *pipeline.Step) (*cloud.Snapshot, error) {
 	if step == nil || step.Target == nil {
 		return nil, errors.NewExitError(1, "assessment requires a snapshot or simulation target")
 	}
-	if step.Sim {
-		return cloud.Simulate(cloud.SimulationOptions{}), nil
-	}
-	if step.Target.Type != models.TargetSnapshot {
-		return nil, errors.NewExitError(1, "unsupported target: live provider collection is not implemented; provide a snapshot file")
-	}
-	snap, err := cloud.LoadFile(step.Target.Value)
+	v, err := step.Cached("input:cloud", func() (any, error) {
+		if step.Sim {
+			return cloud.Simulate(cloud.SimulationOptions{}), nil
+		}
+		if step.Target.Type != models.TargetSnapshot {
+			return nil, errors.NewExitError(1, "unsupported target: live provider collection is not implemented; provide a snapshot file")
+		}
+		snap, err := cloud.LoadFile(step.Target.Value)
+		if err != nil {
+			return nil, errors.WrapExitError(1, "loading snapshot", err)
+		}
+		return snap, nil
+	})
 	if err != nil {
-		return nil, errors.WrapExitError(1, "loading snapshot", err)
+		return nil, err
 	}
-	return snap, nil
+	return v.(*cloud.Snapshot), nil
+}
+
+// snapshotFrom reuses the pipeline load memo of currentSnapshot so the input
+// is parsed at most once per assessment.
+func snapshotFrom(step *pipeline.Step) (*cloud.Snapshot, error) {
+	return currentSnapshot(step)
+}
+
+// overviewFrom memoizes the misconfiguration overview across the inventory
+// and analysis stages.
+func overviewFrom(step *pipeline.Step) misconfig.Overview {
+	v, err := step.Cached("overview", func() (any, error) {
+		snap, err := snapshotFrom(step)
+		if err != nil {
+			return nil, err
+		}
+		return misconfig.Build(snap), nil
+	})
+	if err != nil {
+		return misconfig.Overview{}
+	}
+	return v.(misconfig.Overview)
+}
+
+// assetsFrom memoizes the asset discovery across the discovery and analysis
+// stages.
+func assetsFrom(step *pipeline.Step) []discovery.Asset {
+	v, err := step.Cached("assets", func() (any, error) {
+		snap, err := snapshotFrom(step)
+		if err != nil {
+			return nil, err
+		}
+		var disc discovery.Discovery
+		return disc.Run(snap), nil
+	})
+	if err != nil {
+		return nil
+	}
+	return v.([]discovery.Asset)
+}
+
+// profileOf returns the named assessment profile, defaulting to standard
+// when the configuration does not select one.
+func profileOf(cfg map[string]any) string {
+	if p, ok := cfg["profile"].(string); ok && p != "" {
+		return p
+	}
+	// No profile selected falls through to the full rule set so pipeline
+	// invocations without an explicit profile behave exactly as before the
+	// profile filter existed. The CLI always resolves an explicit profile.
+	return ""
 }
