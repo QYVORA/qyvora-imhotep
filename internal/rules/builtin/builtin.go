@@ -29,6 +29,8 @@ func All() []rules.Rule {
 		&unencryptedStorage{},
 		&internetAdminPort{},
 		&publicDatabase{},
+		&publicCompute{},
+		&unencryptedDatabase{},
 		&privilegedContainer{},
 		&hostNetworkPod{},
 		&latestImageTag{},
@@ -209,7 +211,7 @@ type internetAdminPort struct{}
 func (r *internetAdminPort) Meta() rules.Meta {
 	return metadata("NET-001", "Administrative port exposed to the internet", "network",
 		"A security group exposes an administrative/database port to 0.0.0.0/0 or any.",
-		"Restrict administrative ports to trusted troup CIDRs or a bastion.",
+		"Restrict administrative ports to trusted CIDRs or a bastion.",
 		models.SeverityHigh)
 }
 
@@ -221,13 +223,15 @@ func (r *internetAdminPort) Run(_ context.Context, envAny any, sink *rules.Sink)
 			if rl.Direction != "" && !strings.EqualFold(rl.Direction, "ingress") {
 				continue
 			}
-			if rl.FromPort == rl.ToPort && network.IsAdminPort(rl.ToPort) {
-				if exposed, _ := network.ExposedToInternet(rl.CIDRs, rl.FromPort, rl.ToPort, rl.ToPort); exposed {
-					ev := env.AddEvidence(models.EvidenceConfiguration, "snapshot:aws", "network:"+ng.Name,
-						targetName(env, ng.Name), "port "+itoa(rl.ToPort)+" reachable from "+strings.Join(rl.CIDRs, ","))
-					sink.Add(newFinding(r.Meta(), env, []string{ng.Name},
-						map[string]string{"port": itoa(rl.ToPort), "protocol": rl.Protocol, "cidr": strings.Join(rl.CIDRs, ",")}, ev))
-				}
+			port, ok := network.AdminPortInRange(rl.FromPort, rl.ToPort)
+			if !ok {
+				continue
+			}
+			if exposed, _ := network.ExposedToInternet(rl.CIDRs, rl.FromPort, rl.ToPort, port); exposed {
+				ev := env.AddEvidence(models.EvidenceConfiguration, "snapshot:aws", "network:"+ng.Name,
+					targetName(env, ng.Name), "port "+itoa(port)+" reachable from "+strings.Join(rl.CIDRs, ","))
+				sink.Add(newFinding(r.Meta(), env, []string{ng.Name},
+					map[string]string{"port": itoa(port), "protocol": rl.Protocol, "cidr": strings.Join(rl.CIDRs, ",")}, ev))
 			}
 		}
 	}
@@ -253,6 +257,53 @@ func (r *publicDatabase) Run(_ context.Context, envAny any, sink *rules.Sink) er
 		ev := env.AddEvidence(models.EvidenceAttribute, "snapshot:"+string(env.Snapshot.Provider), "database:"+d.Name,
 			targetName(env, d.Name), "publicly_accessible=true")
 		sink.Add(newFinding(r.Meta(), env, []string{d.Name}, map[string]string{"engine": d.Engine, "port": itoa(d.Port)}, ev))
+	}
+	return nil
+}
+
+type publicCompute struct{}
+
+func (r *publicCompute) Meta() rules.Meta {
+	return metadata("NET-003", "Publicly exposed compute workload", "network",
+		"A compute workload is marked publicly exposed, placing its services directly on the internet.",
+		"Place workloads behind private networking or a load balancer with identity-based access.",
+		models.SeverityHigh)
+}
+
+func (r *publicCompute) Run(_ context.Context, envAny any, sink *rules.Sink) error {
+	env := envAny.(*analysis.Env)
+	for i := range env.Snapshot.Computes {
+		c := &env.Snapshot.Computes[i]
+		if !c.PubliclyExposed {
+			continue
+		}
+		ev := env.AddEvidence(models.EvidenceAttribute, "compute:"+c.Kind, c.Name,
+			targetName(env, c.Name), "publicly_exposed=true")
+		sink.Add(newFinding(r.Meta(), env, []string{c.Name}, map[string]string{"kind": c.Kind}, ev))
+	}
+	return nil
+}
+
+type unencryptedDatabase struct{}
+
+func (r *unencryptedDatabase) Meta() rules.Meta {
+	return metadata("DBE-001", "Unencrypted database at rest", "data",
+		"A managed database does not report encryption at rest, exposing stored records if media is stolen.",
+		"Enable database storage encryption; audit that keys are customer-managed where required.",
+		models.SeverityMedium)
+}
+
+func (r *unencryptedDatabase) Run(_ context.Context, envAny any, sink *rules.Sink) error {
+	env := envAny.(*analysis.Env)
+	for i := range env.Snapshot.DBs {
+		d := &env.Snapshot.DBs[i]
+		if d.Encrypted {
+			continue
+		}
+		ev := env.AddEvidence(models.EvidenceAttribute, "snapshot:"+string(env.Snapshot.Provider), "database:"+d.Name,
+			targetName(env, d.Name), "encrypted=false")
+		sink.Add(newFinding(r.Meta(), env, []string{d.Name},
+			map[string]string{"engine": d.Engine, "encrypted": "false"}, ev))
 	}
 	return nil
 }
@@ -360,20 +411,32 @@ func (r *hardcodedSecret) Run(_ context.Context, envAny any, sink *rules.Sink) e
 				map[string]string{"kind": m.Kind, "line": itoa(m.Line)}, ev))
 		}
 	}
+	for i := range env.Snapshot.Manifests {
+		mf := &env.Snapshot.Manifests[i]
+		for _, m := range secrets.Scan(mf.Name, mf.Content) {
+			ev := env.AddEvidence(models.EvidenceFile, "manifest:"+mf.Kind, mf.Name,
+				targetName(env, mf.Name), "secret candidate "+m.Kind+" line "+itoa(m.Line))
+			if env.Events != nil {
+				env.Events.Info(events.SecretDetected, map[string]any{
+					"kind": m.Kind, "source": "manifest:" + mf.Name, "line": m.Line,
+				})
+			}
+			sink.Add(newFinding(r.Meta(), env, []string{mf.Name},
+				map[string]string{"kind": m.Kind, "line": itoa(m.Line), "location": "manifest"}, ev))
+		}
+	}
 	for i := range env.Snapshot.Computes {
 		c := &env.Snapshot.Computes[i]
-		for _, entry := range c.Environment {
-			for _, m := range secrets.Scan(c.Name, entry+"\n") {
-				ev := env.AddEvidence(models.EvidenceAttribute, "compute:"+c.Kind, "env:"+c.Name,
-					targetName(env, c.Name), "secret candidate "+m.Kind+" in environment")
-				if env.Events != nil {
-					env.Events.Info(events.SecretDetected, map[string]any{
-						"kind": m.Kind, "source": "compute:" + c.Name,
-					})
-				}
-				sink.Add(newFinding(r.Meta(), env, []string{c.Name},
-					map[string]string{"kind": m.Kind, "location": "environment"}, ev))
+		for _, m := range secrets.Scan(c.Name, strings.Join(c.Environment, "\n")) {
+			ev := env.AddEvidence(models.EvidenceAttribute, "compute:"+c.Kind, "env:"+c.Name,
+				targetName(env, c.Name), "secret candidate "+m.Kind+" in environment")
+			if env.Events != nil {
+				env.Events.Info(events.SecretDetected, map[string]any{
+					"kind": m.Kind, "source": "compute:" + c.Name,
+				})
 			}
+			sink.Add(newFinding(r.Meta(), env, []string{c.Name},
+				map[string]string{"kind": m.Kind, "location": "environment", "line": itoa(m.Line)}, ev))
 		}
 	}
 	return nil

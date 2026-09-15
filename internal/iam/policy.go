@@ -66,14 +66,44 @@ func toStatement(item any) (cloud.Statement, error) {
 	}
 	s.Actions = toStrings(m["Action"])
 	s.Resources = toStrings(m["Resource"])
-	if p, ok := m["Principal"].(string); ok {
+	switch p := m["Principal"].(type) {
+	case string:
 		s.Principal = p
-	} else if _, ok := m["Principal"].(map[string]any); ok {
-		s.Principal = "*" // principal by map = non-ANONYMOUS; treat as explicit
-	} else if _, ok := m["Principal"].(string); ok {
-		s.Principal = m["Principal"].(string)
+		s.Anonymous = strings.TrimSpace(p) == "*"
+	case map[string]any:
+		// A principal map names explicit principals; only an all-wildcard
+		// form ("*"/"*" or AWS:"*") denotes unauthenticated access. Treating
+		// every map as "*" mis-flagged account-scoped policies as public.
+		s.Principal = strings.Join(principalKeys(p), ",")
+		s.Anonymous = principalIsWildcard(p)
 	}
 	return s, nil
+}
+
+func principalKeys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// principalIsWildcard reports whether the principal map grants the access to
+// everyone ({"*": "*"} or {"AWS": "*"} style).
+func principalIsWildcard(m map[string]any) bool {
+	if len(m) != 1 {
+		return false
+	}
+	for k, v := range m {
+		if k != "*" && !strings.EqualFold(k, "AWS") {
+			return false
+		}
+		sv, ok := v.(string)
+		if !ok || strings.TrimSpace(sv) != "*" {
+			return false
+		}
+	}
+	return true
 }
 
 func toStrings(v any) []string {

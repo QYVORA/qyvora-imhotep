@@ -70,7 +70,14 @@ type Statement struct {
 	Effect    string   `json:"effect"`
 	Actions   []string `json:"actions,omitempty"`
 	Resources []string `json:"resources,omitempty"`
-	Principal string   `json:"principal,omitempty"` // "" = any
+	// Principal is the human-readable rendering of the principal (an ARN,
+	// service name or "*"), empty when the document declares none.
+	Principal string `json:"principal,omitempty"`
+	// Anonymous is true only when the statement provably grants
+	// unauthenticated access ("Principal": "*" or an all-wildcard principal
+	// map). Explicit principals such as an AWS account ARN are never marked
+	// anonymous, so resource-access rules do not mis-flag them as public.
+	Anonymous bool `json:"anonymous,omitempty"`
 }
 
 // Policy is an IAM policy attached to an identity or resource.
@@ -142,11 +149,19 @@ type RawConfig struct {
 
 // Load parses a snapshot from r, rejecting documents that do not declare the
 // snapshot schema.
+// maxInputBytes bounds accepted input size so malformed or hostile documents
+// cannot exhaust available memory during decode.
+const maxInputBytes = 64 << 20 // 64 MiB
+
 func Load(r io.Reader) (*Snapshot, error) {
 	var s Snapshot
-	dec := json.NewDecoder(r)
+	lr := io.LimitReader(r, maxInputBytes+1)
+	dec := json.NewDecoder(lr)
 	if err := dec.Decode(&s); err != nil {
 		return nil, fmt.Errorf("parsing snapshot: %w", err)
+	}
+	if n, _ := io.Copy(io.Discard, lr); n > 0 {
+		return nil, fmt.Errorf("snapshot exceeds maximum supported input size (%d bytes)", maxInputBytes)
 	}
 	if s.Schema != SchemaVersion {
 		return nil, fmt.Errorf("unsupported snapshot schema %q (want %s)", s.Schema, SchemaVersion)
@@ -165,6 +180,13 @@ func LoadFile(path string) (*Snapshot, error) {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	fi, serr := f.Stat()
+	if serr != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, serr)
+	}
+	if fi.Size() > maxInputBytes {
+		return nil, fmt.Errorf("%s exceeds maximum supported input size (%d bytes)", path, maxInputBytes)
+	}
 	return Load(f)
 }
 

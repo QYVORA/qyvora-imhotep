@@ -44,3 +44,39 @@ func TestAdminPorts(t *testing.T) {
 		}
 	}
 }
+
+func TestWideCIDRsAreInternet(t *testing.T) {
+	for _, cidr := range []string{"128.0.0.0/1", "192.0.0.0/2"} {
+		exposed, _ := network.ExposedToInternet([]string{cidr}, 22, 22, 22)
+		if !exposed {
+			t.Errorf("expected wide %q exposed", cidr)
+		}
+	}
+}
+
+func TestRFC1918WidePrefixNotInternet(t *testing.T) {
+	exposed, _ := network.ExposedToInternet([]string{"10.0.0.0/8"}, 22, 22, 22)
+	if exposed {
+		t.Error("10.0.0.0/8 is private and must not be flagged as internet")
+	}
+}
+
+func TestAdminPortInRange(t *testing.T) {
+	if p, ok := network.AdminPortInRange(20, 25); !ok || p != 22 {
+		t.Errorf("range 20-25 should find 22, got (%d, %v)", p, ok)
+	}
+	if _, ok := network.AdminPortInRange(1, 1); ok {
+		t.Error("range 1-1 must not contain an admin port")
+	}
+	if p, ok := network.AdminPortInRange(0, 0); !ok || p != 22 {
+		t.Errorf("0-0 (single forwarded port) should fall back to 22, got (%d, %v)", p, ok)
+	}
+	if p, ok := network.AdminPortInRange(8000, 9000); ok {
+		t.Errorf("range 8000-9000 contains no admin port, got %d", p)
+	}
+	if p, ok := network.AdminPortInRange(1, 65535); !ok {
+		t.Error("full range must contain admin ports")
+	} else if p != 22 {
+		t.Errorf("first admin port in full range should be 22, got %d", p)
+	}
+}

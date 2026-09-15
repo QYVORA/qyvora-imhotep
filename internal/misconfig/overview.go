@@ -6,6 +6,7 @@ package misconfig
 
 import (
 	"github.com/QYVORA/qyvora-imhotep/internal/cloud"
+	"github.com/QYVORA/qyvora-imhotep/internal/network"
 )
 
 // Overview summarizes a snapshot's configuration surface for reporting.
@@ -52,7 +53,6 @@ func Build(s *cloud.Snapshot) Overview {
 	}
 	o.TotalAssets += len(s.Groups) + len(s.Networks) + len(s.DBs) + len(s.Computes)
 	for i := range s.Networks {
-		o.TotalAssets++
 		for _, r := range s.Networks[i].Rules {
 			if adminToInternet(r.CIDRs, r.FromPort, r.ToPort) {
 				o.InternetAdminPorts = append(o.InternetAdminPorts, s.Networks[i].Name)
@@ -62,7 +62,6 @@ func Build(s *cloud.Snapshot) Overview {
 	}
 	for i := range s.DBs {
 		d := &s.DBs[i]
-		o.TotalAssets++
 		if d.PubliclyAccessible {
 			o.PublicDatabases = append(o.PublicDatabases, d.Name)
 		}
@@ -83,19 +82,12 @@ func isWildcard(st cloud.Statement) bool {
 	return false
 }
 
+// adminToInternet reports whether a rule exposes an administrative port to the
+// internet, honoring wide CIDRs beyond the literal 0.0.0.0/0.
 func adminToInternet(cidrs []string, from, to int) bool {
-	for _, c := range cidrs {
-		if c == "0.0.0.0/0" || c == "::/0" || c == "any" {
-			if from <= 0 || to <= 0 {
-				return true
-			}
-			for p := from; p <= to && p-from <= 20; p++ {
-				switch p {
-				case 22, 23, 3389, 5900, 5432, 3306, 6379:
-					return true
-				}
-			}
-		}
+	if !network.InternetReachable(cidrs) {
+		return false
 	}
-	return false
+	_, ok := network.AdminPortInRange(from, to)
+	return ok
 }

@@ -1,6 +1,7 @@
 package iam_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QYVORA/qyvora-imhotep/internal/iam"
@@ -55,5 +56,42 @@ func TestParsePolicyRejectsNonJSON(t *testing.T) {
 func TestParsePolicyRejectsMissingStatement(t *testing.T) {
 	if _, err := iam.ParsePolicy(`{"Version":"2012-10-17"}`); err == nil {
 		t.Error("expected error for missing Statement")
+	}
+}
+
+func TestPrincipalMapAccountARNIsNotAnonymous(t *testing.T) {
+	raw := `{"Version":"2012-10-17","Statement":{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::123456789012:root"},"Action":"*","Resource":"*"}}`
+	p, err := iam.ParsePolicy(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	st := p.Statements[0]
+	if st.Anonymous {
+		t.Error("account ARN principal must not be anonymous")
+	}
+	if !strings.Contains(st.Principal, "AWS") {
+		t.Errorf("principal rendering lost the key: %q", st.Principal)
+	}
+}
+
+func TestPrincipalStringWildcardIsAnonymous(t *testing.T) {
+	raw := `{"Version":"2012-10-17","Statement":{"Effect":"Allow","Principal":"*","Action":"Get","Resource":"*"}}`
+	p, err := iam.ParsePolicy(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !p.Statements[0].Anonymous {
+		t.Error("string \"*\" principal must be anonymous")
+	}
+}
+
+func TestPrincipalWildcardMapIsAnonymous(t *testing.T) {
+	raw := `{"Version":"2012-10-17","Statement":{"Effect":"Allow","Principal":{"*":"*"},"Action":"Get","Resource":"*"}}`
+	p, err := iam.ParsePolicy(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !p.Statements[0].Anonymous {
+		t.Error("{\"*\":\"*\"} principal must be anonymous")
 	}
 }
