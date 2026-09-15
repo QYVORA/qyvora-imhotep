@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=IMHOTEP
+GenericName=Cloud Security Assessment Framework
+Comment=Authorized cloud security posture assessment and evidence-driven reporting
+Exec=@PREFIX@/bin/imhotep
+Icon=@PREFIX@/share/icons/hicolor/512x512/apps/imhotep.png
+Terminal=true
+Categories=Development;Security;Utility;
+Keywords=cloud;security;assessment;iam;storage;audit;
