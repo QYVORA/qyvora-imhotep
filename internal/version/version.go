@@ -15,7 +15,7 @@ const Framework = "imhotep"
 // Public QYVORA organisation details, kept in one place.
 const (
 	CompanyName  = "QYVORA OffSec"
-	CompanyURL   = "https://qyvora.netlify.app"
+	CompanyURL   = "https://qyvora.org"
 	CompanyEmail = "qyvorasec@gmail.com"
 	CompanyCity  = "Tamale, Ghana"
 )
