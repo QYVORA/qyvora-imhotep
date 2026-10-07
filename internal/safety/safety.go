@@ -21,16 +21,17 @@ const (
 
 // OperationMetadata describes one operation's safety contract.
 type OperationMetadata struct {
-	ID           string           `json:"id"`
-	Name         string           `json:"name"`
-	Description  string           `json:"description"`
-	Class        Class            `json:"class"`
-	Risk         models.RiskLevel `json:"risk"`
-	TargetType   string           `json:"target_type"`
-	AuthRequired bool             `json:"authorization_required"`
-	Confirm      bool             `json:"confirmation_required"`
-	ChangesState bool             `json:"changes_state"`
-	Reversible   bool             `json:"reversible"`
+	ID           string              `json:"id"`
+	Name         string              `json:"name"`
+	Description  string              `json:"description"`
+	Class        Class               `json:"class"`
+	Risk         models.RiskLevel    `json:"risk"`
+	NoiseLevel   models.NoiseLevel   `json:"noise_level"`
+	TargetType   string              `json:"target_type"`
+	AuthRequired bool                `json:"authorization_required"`
+	Confirm      bool                `json:"confirmation_required"`
+	ChangesState bool                `json:"changes_state"`
+	Reversible   bool                `json:"reversible"`
 }
 
 // Known operations.
@@ -39,21 +40,21 @@ var (
 	OpSnapshotParse = OperationMetadata{
 		ID: "imhotep.snapshot.parse", Name: "cloud snapshot analysis",
 		Description: "Parse and analyze an offline cloud snapshot file.",
-		Class:       ClassDiscovery, Risk: models.RiskS1, TargetType: "snapshot",
+		Class:       ClassDiscovery, Risk: models.RiskS1, NoiseLevel: models.NoiseLevelPassive, TargetType: "snapshot",
 		AuthRequired: false, Confirm: false, ChangesState: false, Reversible: true,
 	}
 	// OpAnalyze runs the analysis pipeline over collected assets. Read-only.
 	OpAnalyze = OperationMetadata{
 		ID: "imhotep.analyze", Name: "cloud configuration analysis",
 		Description: "Run IAM, storage, network, container, secret and misconfiguration analysis.",
-		Class:       ClassAnalysis, Risk: models.RiskS1, TargetType: "any",
+		Class:       ClassAnalysis, Risk: models.RiskS1, NoiseLevel: models.NoiseLevelPassive, TargetType: "any",
 		AuthRequired: false, Confirm: false, ChangesState: false, Reversible: true,
 	}
 	// OpLiveProvider would contact a real cloud control plane. Not implemented.
 	OpLiveProvider = OperationMetadata{
 		ID: "imhotep.live.provider", Name: "live provider collection",
 		Description: "Query a live cloud provider API (NOT IMPLEMENTED).",
-		Class:       ClassLiveProvider, Risk: models.RiskS2, TargetType: "provider",
+		Class:       ClassLiveProvider, Risk: models.RiskS2, NoiseLevel: models.NoiseLevelModerate, TargetType: "provider",
 		AuthRequired: true, Confirm: true, ChangesState: false, Reversible: true,
 	}
 )
