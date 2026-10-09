@@ -63,6 +63,7 @@ func runTUI(root *cobra.Command, ctx context.Context) error {
 	code, err := tui.Run(tui.Config{
 		Title:        "QYVORA / IMHOTEP",
 		Version:      version.String(),
+		Banner:       tui.ToolBanner("IMHOTEP", "Offline cloud snapshot analysis framework"),
 		Runner:       runner,
 		Out:          os.Stdout,
 		Capabilities: caps,
