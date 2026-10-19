@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/QYVORA/qyvora-imhotep/internal/analysis"
+	"github.com/QYVORA/qyvora-imhotep/internal/banner"
 	"github.com/QYVORA/qyvora-imhotep/internal/capabilities"
 	"github.com/QYVORA/qyvora-imhotep/internal/cloud"
 	"github.com/QYVORA/qyvora-imhotep/internal/config"
@@ -175,7 +176,7 @@ func (a *App) rootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "imhotep",
 		Short:         "QYVORA cloud security assessment framework",
-		Long:          "imhotep analyzes offline cloud snapshots and deterministic simulations for IAM, storage, network, container, secret and misconfiguration risk. Live provider collection is not implemented and is refused honestly.",
+		Long:          banner.Render() + "\n\n  " + banner.Tagline + " — " + version.CompanyName + "\n  " + version.CompanyURL + "\n  Built in " + version.CompanyCity + "\n\n" + "imhotep analyzes offline cloud snapshots and deterministic simulations for IAM, storage, network, container, secret and misconfiguration risk. Live provider collection is not implemented and is refused honestly.",
 		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
