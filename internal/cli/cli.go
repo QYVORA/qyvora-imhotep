@@ -176,7 +176,7 @@ func (a *App) rootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "imhotep",
 		Short:         "QYVORA cloud security assessment framework",
-		Long:          banner.Render() + "\n\n  " + banner.Tagline + " — " + version.CompanyName + "\n  " + version.CompanyURL + "\n  Built in " + version.CompanyCity + "\n\n" + "imhotep analyzes offline cloud snapshots and deterministic simulations for IAM, storage, network, container, secret and misconfiguration risk. Live provider collection is not implemented and is refused honestly.",
+		Long:          banner.Render() + "\n\n  " + banner.Tagline + " — " + version.CompanyName + "\n  " + version.CompanyURL + "\n  Built in " + version.CompanyCity + "\n\n" + "imhotep analyzes offline cloud snapshots and deterministic simulations for IAM, storage, network, container, secret and misconfiguration risk. Live provider collection is not implemented and is refused honestly." + "\n\nCommands follow the shared tier grammar\nimhotep <tier> <module> [<action>] [target] [flags], where the tier is one of\nrecon, exploit, or report. Run it with no arguments to print this help;\nassessment is one-shot.",
 		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
