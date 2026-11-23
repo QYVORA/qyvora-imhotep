@@ -1,23 +1,22 @@
 # Imhotep
 
 > **Offline cloud snapshot analysis framework.**
-> A terminal-first console and CLI for cloud security assessment: IAM,
-> storage, network, container and secret exposure plus misconfigurations —
-> from recorded snapshots, with no live provider access.
+> A one-shot CLI for cloud security assessment: IAM, storage, network,
+> container and secret exposure plus misconfigurations — from recorded
+> snapshots, with no live provider access.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Overview
 
 Imhotep is QYVORA's cloud security assessment framework for **offline
-cloud snapshots** and deterministic simulations. It runs as a shared
-terminal-first console **and** a one-shot CLI with identical commands, and
-produces evidence-backed findings with transparent risk scoring. **Live
+cloud snapshots** and deterministic simulations. It runs as a one-shot CLI
+and produces evidence-backed findings with transparent risk scoring. **Live
 provider collection is not implemented and is refused honestly**; secret
 material is redacted at collection time.
 
-- **One workflow, two surfaces** — the console commands equal the CLI
-  commands.
+- **One workflow, one surface** — every assessment runs through the one-shot
+  CLI.
 - **Deterministic `--sim`** — fixed dataset exercises every rule, no
   provider account required, CI-ready.
 - **Offline only** — reads only the snapshots you explicitly provide;
@@ -60,15 +59,10 @@ imhotep snapshot --sim
 imhotep assess snapshot.sim.json
 ```
 
-Interactive console (REPL on a real terminal; stdin piping uses a plain line reader):
-
-```sh
-imhotep
-assess --sim
-findings
-evidence
-exit
-```
+The interactive console is retired and unavailable in this release. The
+per-tool TUI is excluded from builds (`//go:build ignore`) pending the redirect
+of qyvora-tui to the future AI orchestration layer; a bare invocation prints
+CLI usage. Use the one-shot commands above.
 
 Machine-readable output:
 
@@ -83,7 +77,6 @@ imhotep report -o json
 ```
 assess        run the analysis pipeline against a snapshot or simulation
 capabilities  print the machine-readable capability contract
-console       start the interactive assessment console
 evidence      inspect the latest assessment evidence
 findings      inspect the latest assessment findings
 providers     list supported cloud providers and their status

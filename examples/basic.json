@@ -1,0 +1,15 @@
+{
+  "schema": "qyvora.imhotep.snapshot.v1",
+  "provider": "aws",
+  "region": "us-east-1",
+  "scope_id": "123456789012",
+  "buckets": [
+    {
+      "name": "example-bucket",
+      "provider": "aws",
+      "public_read": false,
+      "public_write": false,
+      "encrypted": true
+    }
+  ]
+}
