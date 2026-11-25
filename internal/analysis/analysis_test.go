@@ -21,7 +21,7 @@ import (
 // finding.
 func TestSimulationPipelineProducesFindings(t *testing.T) {
 	reg := rules.NewRegistry()
-	reg.RegisterAll(builtin.All()...)
+	_ = reg.RegisterAll(builtin.All()...)
 
 	var evBuf bytes.Buffer
 	stream := events.NewStream(&evBuf)
@@ -79,7 +79,7 @@ func TestSimulationPipelineProducesFindings(t *testing.T) {
 // raw snapshot document.
 func TestSnapshotPipelineAcceptsFileTarget(t *testing.T) {
 	reg := rules.NewRegistry()
-	reg.RegisterAll(builtin.All()...)
+	_ = reg.RegisterAll(builtin.All()...)
 
 	doc := `{"schema":"qyvora.imhotep.snapshot.v1","provider":"azure","scope_id":"acme-sub-1",
 	  "buckets":[{"name":"blob-logs","public_read":false,"public_write":true,"encrypted":true}]}`
